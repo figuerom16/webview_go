@@ -6,7 +6,7 @@ package webview
 
 #cgo linux openbsd freebsd netbsd CXXFLAGS: -DWEBVIEW_GTK -std=c++11
 #cgo linux openbsd freebsd netbsd LDFLAGS: -ldl
-#cgo linux openbsd freebsd netbsd pkg-config: gtk+-3.0 webkit2gtk-4.0
+#cgo linux openbsd freebsd netbsd pkg-config: gtk+-3.0 webkit2gtk-4.1
 
 #cgo darwin CXXFLAGS: -DWEBVIEW_COCOA -std=c++11
 #cgo darwin LDFLAGS: -framework WebKit -ldl
@@ -25,16 +25,17 @@ void CgoWebViewUnbind(webview_t w, const char *name);
 */
 import "C"
 import (
-	_ "github.com/webview/webview_go/libs/mswebview2"
-	_ "github.com/webview/webview_go/libs/mswebview2/include"
-	_ "github.com/webview/webview_go/libs/webview"
-	_ "github.com/webview/webview_go/libs/webview/include"
 	"encoding/json"
 	"errors"
 	"reflect"
 	"runtime"
 	"sync"
 	"unsafe"
+
+	_ "github.com/webview/webview_go/libs/mswebview2"
+	_ "github.com/webview/webview_go/libs/mswebview2/include"
+	_ "github.com/webview/webview_go/libs/webview"
+	_ "github.com/webview/webview_go/libs/webview/include"
 )
 
 func init() {
@@ -118,7 +119,7 @@ type WebView interface {
 	//
 	// f must be a function
 	// f must return either value and error or just error
-	Bind(name string, f interface{}) error
+	Bind(name string, f any) error
 
 	// Removes a callback that was previously set by Bind.
 	Unbind(name string) error
@@ -132,7 +133,7 @@ var (
 	m        sync.Mutex
 	index    uintptr
 	dispatch = map[uintptr]func(){}
-	bindings = map[uintptr]func(id, req string) (interface{}, error){}
+	bindings = map[uintptr]func(id, req string) (any, error){}
 )
 
 func boolToInt(b bool) C.int {
@@ -231,7 +232,7 @@ func _webviewBindingGoCallback(w C.webview_t, id *C.char, req *C.char, index uin
 	m.Lock()
 	f := bindings[uintptr(index)]
 	m.Unlock()
-	jsString := func(v interface{}) string { b, _ := json.Marshal(v); return string(b) }
+	jsString := func(v any) string { b, _ := json.Marshal(v); return string(b) }
 	status, result := 0, ""
 	if res, err := f(C.GoString(id), C.GoString(req)); err != nil {
 		status = -1
@@ -248,7 +249,7 @@ func _webviewBindingGoCallback(w C.webview_t, id *C.char, req *C.char, index uin
 	C.webview_return(w, id, C.int(status), s)
 }
 
-func (w *webview) Bind(name string, f interface{}) error {
+func (w *webview) Bind(name string, f any) error {
 	v := reflect.ValueOf(f)
 	// f must be a function
 	if v.Kind() != reflect.Func {
@@ -259,7 +260,7 @@ func (w *webview) Bind(name string, f interface{}) error {
 		return errors.New("function may only return a value or a value+error")
 	}
 
-	binding := func(id, req string) (interface{}, error) {
+	binding := func(id, req string) (any, error) {
 		raw := []json.RawMessage{}
 		if err := json.Unmarshal([]byte(req), &raw); err != nil {
 			return nil, err
